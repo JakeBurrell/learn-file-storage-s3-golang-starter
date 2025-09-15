@@ -1,12 +1,13 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -45,9 +46,14 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer file.Close()
 
-	mediaType := header.Header.Get("Content-Type")
-	if mediaType == "" {
-		respondWithError(w, http.StatusBadRequest, "Missing Content-Type for thumbnail", nil)
+	mediaType, _, err := mime.ParseMediaType(header.Header.Get("Content-Type"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid Content-Type", err)
+		return
+	}
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		respondWithError(w, http.StatusBadGateway, "Invalid file type", nil)
+		return
 	}
 
 	video, err := cfg.db.GetVideo(videoID)
@@ -61,14 +67,11 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Store image in assetsRoot
-	contentTypeSplit := strings.Split(mediaType, "/")
-	if len(contentTypeSplit) != 2 && contentTypeSplit[0] != "image" {
-		respondWithError(w, http.StatusBadRequest, "Content-Type is not an image", err)
-		return
-	}
-	fileExtension := contentTypeSplit[1]
-	fileName := fmt.Sprintf("%s.%s", videoIDString, fileExtension)
-	filePath := filepath.Join(cfg.assetsRoot, fileName)
+	var randomBytes [32]byte
+	rand.Read(randomBytes[:])
+	randomName := base64.RawURLEncoding.EncodeToString(randomBytes[:])
+	fileName := getAssetPath(randomName, mediaType)
+	filePath := cfg.getAssetDiskPath(fileName)
 
 	localFile, err := os.Create(filePath)
 	if err != nil {
@@ -80,9 +83,10 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	_, err = io.Copy(localFile, file)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to save image to file", err)
+		return
 	}
 
-	url := fmt.Sprintf("http://localhost:%s/assets/%s", cfg.port, filePath)
+	url := cfg.getAssetURL(fileName)
 	video.ThumbnailURL = &url
 
 	err = cfg.db.UpdateVideo(video)
