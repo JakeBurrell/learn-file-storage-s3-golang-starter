@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"mime"
@@ -33,6 +31,16 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	video, err := cfg.db.GetVideo(videoID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't find video", err)
+		return
+	}
+	if video.UserID != userID {
+		respondWithError(w, http.StatusUnauthorized, "Not authorized to update this video", nil)
+		return
+	}
+
 	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
 
 	const maxMemory = 10 << 20
@@ -56,21 +64,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	video, err := cfg.db.GetVideo(videoID)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't find video", err)
-		return
-	}
-	if video.UserID != userID {
-		respondWithError(w, http.StatusUnauthorized, "Not authorized to update this video", nil)
-		return
-	}
-
-	// Store image in assetsRoot
-	var randomBytes [32]byte
-	rand.Read(randomBytes[:])
-	randomName := base64.RawURLEncoding.EncodeToString(randomBytes[:])
-	fileName := getAssetPath(randomName, mediaType)
+	fileName := getAssetPath(mediaType)
 	filePath := cfg.getAssetDiskPath(fileName)
 
 	localFile, err := os.Create(filePath)
