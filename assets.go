@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"os/exec"
@@ -82,10 +83,12 @@ func getVideoAspectRatio(filepath string) (string, error) {
 
 	w := float64(aspect.Streams[0].Width)
 	h := float64(aspect.Streams[0].Height)
-	if math.Abs(w*9-h*16) < 5 {
+	log.Printf("w=%v h=%v diff16x9=%v diff9x16=%v",
+		w, h, math.Abs(w*9-h*16), math.Abs(w*16-h*9))
+	if math.Abs(w*9-h*16) < 100 {
 		return "16:9", nil
 	}
-	if math.Abs(w*16-h*9) < 5 {
+	if math.Abs(w*16-h*9) < 100 {
 		return "9:16", nil
 	}
 	return "other", nil
